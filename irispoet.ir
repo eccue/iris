@@ -1,0 +1,174 @@
+# ═══════════════════════════════════════════════════════════════════════
+#   IrisPoet v4 — the final version
+#   - Dropout (0.1) in forward pass — prevents overfitting
+#   - Random sampling from corpus — sees the whole book
+#   - Inlined forward, no nested functions
+#   - Gradient clipping on every weight
+# ═══════════════════════════════════════════════════════════════════════
+
+seed(42);
+
+# ─── Config ────────────────────────────────────────────────────────────
+let V     = 256;
+let D     = 48;
+let CTX   = 24;
+let LR    = 0.0007;
+let STEPS = 8000;
+let CLIP  = 1.0;
+let TEMP  = 0.8;
+
+# ─── Load corpus ───────────────────────────────────────────────────────
+let text   = read_text("corpus.txt");
+let tokens = tokenize(text);
+let N      = len(tokens);
+print "corpus: " + str(N) + " chars";
+print "";
+
+# ─── Init weights ──────────────────────────────────────────────────────
+let emb  = randn(V, D)   * 0.1;
+
+let Wq1  = randn(D, D)   * 0.1;
+let Wk1  = randn(D, D)   * 0.1;
+let Wv1  = randn(D, D)   * 0.1;
+let Wo1  = randn(D, D)   * 0.1;
+let W11  = randn(D, D*2) * 0.1;
+let W21  = randn(D*2, D) * 0.1;
+
+let Wq2  = randn(D, D)   * 0.1;
+let Wk2  = randn(D, D)   * 0.1;
+let Wv2  = randn(D, D)   * 0.1;
+let Wo2  = randn(D, D)   * 0.1;
+let W12  = randn(D, D*2) * 0.1;
+let W22  = randn(D*2, D) * 0.1;
+
+let Wout = randn(D, V)   * 0.1;
+
+# ─── Forward pass (with dropout) ──────────────────────────────────────
+fn forward(x) {
+    let h = posenc(dropout(embedding(x, emb), 0.1));
+
+    let at1 = attention(h @ Wq1, h @ Wk1, h @ Wv1);
+    let n1  = layernorm(h + dropout(at1, 0.1));
+    let f1  = relu(n1 @ W11);
+    let h1  = layernorm(n1 + dropout(f1 @ W21, 0.1));
+
+    let at2 = attention(h1 @ Wq2, h1 @ Wk2, h1 @ Wv2);
+    let n2  = layernorm(h1 + dropout(at2, 0.1));
+    let f2  = relu(n2 @ W12);
+    let h2  = layernorm(n2 + dropout(f2 @ W22, 0.1));
+
+    return h2 @ Wout;
+}
+
+# ─── Training ──────────────────────────────────────────────────────────
+print "training " + str(STEPS) + " steps (LR " + str(LR) + ", D " + str(D) + ", dropout 0.1)...";
+print "";
+
+let first_loss = 0.0;
+let last_loss  = 0.0;
+let t0         = clock();
+
+for step in range(STEPS) {
+    let i = floor(rand() * (N - CTX - 1));
+
+    let x = slice(tokens, i,     CTX);
+    let y = slice(tokens, i + 1, CTX);
+
+    reset();
+    let loss = cross_entropy(forward(x), y);
+    backward(loss);
+
+    adam("emb",  emb,  clip(grad(emb),  CLIP), LR);
+    adam("Wq1",  Wq1,  clip(grad(Wq1),  CLIP), LR);
+    adam("Wk1",  Wk1,  clip(grad(Wk1),  CLIP), LR);
+    adam("Wv1",  Wv1,  clip(grad(Wv1),  CLIP), LR);
+    adam("Wo1",  Wo1,  clip(grad(Wo1),  CLIP), LR);
+    adam("W11",  W11,  clip(grad(W11),  CLIP), LR);
+    adam("W21",  W21,  clip(grad(W21),  CLIP), LR);
+    adam("Wq2",  Wq2,  clip(grad(Wq2),  CLIP), LR);
+    adam("Wk2",  Wk2,  clip(grad(Wk2),  CLIP), LR);
+    adam("Wv2",  Wv2,  clip(grad(Wv2),  CLIP), LR);
+    adam("Wo2",  Wo2,  clip(grad(Wo2),  CLIP), LR);
+    adam("W12",  W12,  clip(grad(W12),  CLIP), LR);
+    adam("W22",  W22,  clip(grad(W22),  CLIP), LR);
+    adam("Wout", Wout, clip(grad(Wout), CLIP), LR);
+
+    let lv = num(loss);
+    if (step == 0) { first_loss = lv; }
+    last_loss = lv;
+
+    if (step % 200 == 0) {
+        let bar_n = floor((5.5 - lv) / 5.5 * 30.0);
+        if (bar_n < 0) { bar_n = 0; }
+        let bar = "";
+        for b in range(bar_n) { bar = bar + "#"; }
+        print "step " + str(step) + "   loss " + str(lv) + "   " + bar;
+    }
+}
+
+let t1 = clock();
+print "";
+print "done in " + str(floor(t1 - t0)) + "s";
+print "first loss: " + str(first_loss);
+print "last  loss: " + str(last_loss);
+
+# ─── Save weights ──────────────────────────────────────────────────────
+save(emb,  "emb.bin");
+save(Wq1,  "wq1.bin"); save(Wk1, "wk1.bin"); save(Wv1, "wv1.bin"); save(Wo1, "wo1.bin");
+save(W11,  "w11.bin"); save(W21, "w21.bin");
+save(Wq2,  "wq2.bin"); save(Wk2, "wk2.bin"); save(Wv2, "wv2.bin"); save(Wo2, "wo2.bin");
+save(W12,  "w12.bin"); save(W22, "w22.bin");
+save(Wout, "wout.bin");
+print "saved 14 weights.";
+print "";
+
+# ─── Generation ────────────────────────────────────────────────────────
+fn generate(seed_text, nchars, temp) {
+    let ids = tokenize(seed_text);
+    let out = seed_text;
+    for k in range(nchars) {
+        let total = len(ids);
+        let ctx   = zeros(1, CTX);
+        for j in range(CTX) {
+            let src = total - CTX + j;
+            if (src >= 0) { ctx = set_at(ctx, j, at(ids, src)); }
+        }
+        eval_mode();
+        reset();
+        let logits = forward(ctx);
+        let scaled = row(logits, CTX - 1) * (1.0 / temp);
+        let nxt    = sample(scaled);
+        out = out + chr(nxt);
+        ids = push(ids, nxt);
+    }
+    return out;
+}
+
+print "════════════════════════════════════════════════════════════════";
+print "  Model continues these openings:";
+print "════════════════════════════════════════════════════════════════";
+
+print "";
+print "[Once upon a time]";
+print generate("Once upon a time ", 200, TEMP);
+
+print "";
+print "[Alice was]";
+print generate("Alice was ", 200, TEMP);
+
+print "";
+print "[The White Rabbit]";
+print generate("The White Rabbit ", 200, TEMP);
+
+print "";
+print "[temperature 0.4 - focused]";
+print generate("Alice was ", 200, 0.4);
+
+print "";
+print "[temperature 1.2 - creative]";
+print generate("Alice was ", 200, 1.2);
+
+print "";
+print "════════════════════════════════════════════════════════════════";
+print "  done.";
+print "════════════════════════════════════════════════════════════════";

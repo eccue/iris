@@ -1,0 +1,49 @@
+let D = 48;
+let CTX = 24;
+let V = 256;
+
+let emb = randn(V, D) * 0.1;
+let Wq = randn(D, D) * 0.1;
+let Wk = randn(D, D) * 0.1;
+let Wv = randn(D, D) * 0.1;
+let Wa = randn(D, D*2) * 0.1;
+let Wb = randn(D*2, D) * 0.1;
+let Wout = randn(D, V) * 0.1;
+
+let x = arange(CTX);
+print "x shape:";
+print shape(x);
+
+let h = embedding(x, emb);
+print "h shape:";
+print shape(h);
+
+let h2 = posenc(h);
+print "h2 shape:";
+print shape(h2);
+
+let q = h2 @ Wq;
+print "q shape:";
+print shape(q);
+
+let at = attention(q, q, q);
+print "attention shape:";
+print shape(at);
+
+let h1 = layernorm(h2 + at);
+print "h1 shape:";
+print shape(h1);
+
+let f = relu(h1 @ Wa);
+print "f shape:";
+print shape(f);
+
+let h3 = layernorm(h1 + f @ Wb);
+print "h3 shape:";
+print shape(h3);
+
+let logits = h3 @ Wout;
+print "logits shape:";
+print shape(logits);
+
+print "ALL OK";
