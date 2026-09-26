@@ -1,0 +1,21 @@
+# Generated weight files (regenerate by training)
+*.bin
+
+# Logs
+*.log
+training.log
+
+# Downloaded corpora (not our work)
+alice.txt
+
+# Backups
+*.tar.gz
+
+# Editor junk
+*.swp
+*~
+.DS_Store
+
+# Compiled binaries
+iris
+*.o
